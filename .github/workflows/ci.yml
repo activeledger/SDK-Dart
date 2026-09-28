@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        sdk: ["3.10", stable]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: ${{ matrix.sdk }}
+      - run: dart pub get
+      - run: dart format --output=none --set-exit-if-changed .
+        if: matrix.os == 'ubuntu-latest' && matrix.sdk == 'stable'
+      - run: dart analyze --fatal-infos
+      - run: dart test
+        working-directory: packages/activeledger
+      - run: dart test
+        working-directory: packages/activeledger_falcon
+
+  live-network:
+    # The only check that a real ledger accepts what this SDK signs.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/checkout@v4
+        with:
+          repository: activeledger/activeledger
+          path: ledger
+      - name: Build and start a 4-node network
+        working-directory: ledger
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          npm run test:network:serve > ../network.json 2> ../network.log &
+          for i in $(seq 1 120); do grep -q nodes ../network.json && break; sleep 1; done
+          cat ../network.json
+      - run: dart pub get
+      - name: Live tests
+        env:
+          AL_NODES: http://127.0.0.1:5510
+          AL_STORAGE: http://127.0.0.1:5509
+        run: |
+          (cd packages/activeledger && dart test test/integration)
+          (cd packages/activeledger_falcon && dart test test/integration)
+      - if: failure()
+        run: cat network.log
