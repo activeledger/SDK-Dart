@@ -14,7 +14,7 @@ Dart and Flutter SDK for [Activeledger](https://github.com/activeledger/activele
 
 A port of the [JavaScript SDK](https://github.com/activeledger/SDK-JS): the
 same handlers (`KeyHandler`, `TransactionHandler`, `PayloadHandler`,
-`Connection`, `LedgerEvents`), the same key file format, and byte-for-byte the
+`Connection`), the same key file format, and byte-for-byte the
 same signatures, checked against the JavaScript SDK's cross-language vectors
 and against a real four-node network.
 
@@ -192,30 +192,19 @@ return values with `returnToRemote`; they arrive in `response.responses`.
 
 ## Events
 
-Contract events come straight from each node's own database. The storage
-service serves them at `<storage>/activeledgerevents/events`, by default on
-the node's host one port below the node (5260 -> 5259):
+This SDK deliberately has no events client. A node serves contract events
+from its own database at `http://localhost:<storage port>/activeledgerevents/events`
+(a server-sent event stream), and that service should never be exposed
+beyond the node's host - so a client such as a mobile app cannot, and
+should not, connect to it.
 
-```dart
-final events = LedgerEvents('http://localhost:5259');
+To react to events, run your own listener on the node's host and relay
+what your application needs through your own backend. Each event is an SSE
+frame whose `id` is `<milliseconds>-<counter>,<umid>` and whose `data` is
+`{"name", "data", "phase", "contract"}`.
 
-// As a stream - cancelling closes the connection.
-final sub = events.events(contract: contractId, event: 'transfer').listen((e) {
-  print('${e.name} ${e.data} in ${e.umid}');
-});
-
-// Or with a callback, as in the JavaScript SDK.
-final id = events.subscribeToEvent((data) => print(data));
-events.errors.listen(print);
-events.unsubscribe(id);
-```
-
-`Activeledger` works out the storage address from the node address, so
-`ledger.events` is ready to use (pass `storageUrl:` if yours differs).
-Connections reconnect after a drop.
-
-Networks still running ActiveCore can use `ActiveCoreEvents`, which also has
-ActiveCore's activity feed.
+ActiveCore, which previously served events and activity feeds, is
+deprecated and should not be used.
 
 ---
 

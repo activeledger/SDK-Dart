@@ -1,6 +1,5 @@
 import 'connection.dart';
 import 'crypto/crypto_provider.dart';
-import 'events.dart';
 import 'key.dart';
 import 'key_type.dart';
 import 'payload.dart';
@@ -28,13 +27,11 @@ import 'transaction.dart';
 class Activeledger {
   Activeledger(
     String nodeUrl, {
-    String? storageUrl,
     CryptoProvider crypto = const DefaultCryptoProvider(),
   }) : connection = Connection.fromUrl(nodeUrl),
        keys = KeyHandler(crypto: crypto),
        transactions = TransactionHandler(crypto: crypto),
-       payloads = PayloadHandler(crypto: crypto),
-       storageUrl = storageUrl ?? _defaultStorage(nodeUrl);
+       payloads = PayloadHandler(crypto: crypto);
 
   /// The node transactions are sent to.
   final Connection connection;
@@ -42,20 +39,6 @@ class Activeledger {
   final KeyHandler keys;
   final TransactionHandler transactions;
   final PayloadHandler payloads;
-
-  /// The node's storage service, where contract events are served from.
-  /// Defaults to the node's host one port below it (5260 -> 5259), which is
-  /// how a node lays out its services unless configured otherwise.
-  final String storageUrl;
-
-  /// Contract events from the node's database. Created on first use.
-  LedgerEvents get events => _events ??= LedgerEvents(storageUrl);
-  LedgerEvents? _events;
-
-  static String _defaultStorage(String nodeUrl) {
-    final uri = Uri.parse(nodeUrl);
-    return uri.replace(port: uri.port - 1, path: '').toString();
-  }
 
   /// Generates a key. Shorthand for [KeyHandler.generateKey].
   Key generateKey(
@@ -70,9 +53,8 @@ class Activeledger {
   /// Sends a signed transaction.
   Future<LedgerResponse> send(Transaction tx) => connection.sendTransaction(tx);
 
-  /// Releases the HTTP client and any event subscriptions.
+  /// Releases the HTTP client.
   Future<void> close() async {
     connection.close();
-    await _events?.close();
   }
 }
