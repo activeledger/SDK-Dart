@@ -9,8 +9,7 @@ import 'transaction.dart';
 /// Everything in one place, for the common case.
 ///
 /// ```dart
-/// final ledger = Activeledger('http://localhost:5260',
-///     activecoreUrl: 'http://localhost:5261');
+/// final ledger = Activeledger('http://localhost:5260');
 ///
 /// final key = ledger.keys.generateKey('me', type: KeyType.preferredPostQuantum);
 /// await ledger.onboard(key);
@@ -29,13 +28,13 @@ import 'transaction.dart';
 class Activeledger {
   Activeledger(
     String nodeUrl, {
-    String? activecoreUrl,
+    String? storageUrl,
     CryptoProvider crypto = const DefaultCryptoProvider(),
   }) : connection = Connection.fromUrl(nodeUrl),
        keys = KeyHandler(crypto: crypto),
        transactions = TransactionHandler(crypto: crypto),
        payloads = PayloadHandler(crypto: crypto),
-       _activecoreUrl = activecoreUrl;
+       storageUrl = storageUrl ?? _defaultStorage(nodeUrl);
 
   /// The node transactions are sent to.
   final Connection connection;
@@ -44,15 +43,19 @@ class Activeledger {
   final TransactionHandler transactions;
   final PayloadHandler payloads;
 
-  final String? _activecoreUrl;
+  /// The node's storage service, where contract events are served from.
+  /// Defaults to the node's host one port below it (5260 -> 5259), which is
+  /// how a node lays out its services unless configured otherwise.
+  final String storageUrl;
 
-  /// Ledger events from ActiveCore. Needs `activecoreUrl`.
-  late final LedgerEvents events = LedgerEvents(
-    _activecoreUrl ??
-        (throw StateError(
-          'Pass activecoreUrl to Activeledger() to use events',
-        )),
-  );
+  /// Contract events from the node's database. Created on first use.
+  LedgerEvents get events => _events ??= LedgerEvents(storageUrl);
+  LedgerEvents? _events;
+
+  static String _defaultStorage(String nodeUrl) {
+    final uri = Uri.parse(nodeUrl);
+    return uri.replace(port: uri.port - 1, path: '').toString();
+  }
 
   /// Generates a key. Shorthand for [KeyHandler.generateKey].
   Key generateKey(
@@ -70,6 +73,6 @@ class Activeledger {
   /// Releases the HTTP client and any event subscriptions.
   Future<void> close() async {
     connection.close();
-    if (_activecoreUrl != null) await events.close();
+    await _events?.close();
   }
 }
