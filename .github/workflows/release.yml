@@ -1,0 +1,95 @@
+# Cuts a release: test -> bump -> commit -> tag -> push -> GitHub release ->
+# (optional) pub.dev publish.
+#
+# Dispatched by hand with a version rather than triggered by a tag. GitHub does
+# not start new workflow runs from events created with the default
+# GITHUB_TOKEN, so `on: push: tags` never fires for a tag a workflow pushed.
+#
+# The GitHub release is the guaranteed outcome. Publishing to pub.dev is a
+# separate, best-effort job: it runs only when the repository variable
+# PUB_PUBLISH is "true" (set once automated publishing is configured for these
+# packages on pub.dev), and is skipped with a warning otherwise, so a release
+# still stands on a repository that is not yet wired up to pub.dev.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, without the leading v (e.g. 1.0.0)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Resolve, analyse and test
+        run: |
+          set -eu
+          dart pub get
+          dart analyze --fatal-infos
+          dart test -C packages/activeledger
+
+      - name: Bump both package versions
+        run: |
+          set -eu
+          v="${{ inputs.version }}"
+          for pkg in activeledger activeledger_falcon; do
+            sed -i "0,/^version: .*/s//version: $v/" "packages/$pkg/pubspec.yaml"
+            grep -q "^version: $v$" "packages/$pkg/pubspec.yaml" || { echo "bump did not take for $pkg"; exit 1; }
+          done
+
+      - name: Commit, tag and push
+        run: |
+          set -eu
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          # A first release at the version already in the manifests is a no-op
+          # commit; tag it anyway.
+          git diff --quiet || git commit -am "chore(release): v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "v${{ inputs.version }}"
+          git push origin HEAD:main
+          git push origin "v${{ inputs.version }}"
+
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "v${{ inputs.version }}" --title "v${{ inputs.version }}" --generate-notes
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    env:
+      # A repo variable, not a secret: pub.dev publishing uses OIDC, not a
+      # token. Set PUB_PUBLISH=true once automated publishing is configured
+      # for both packages at pub.dev/packages/<name>/admin.
+      PUB_PUBLISH: ${{ vars.PUB_PUBLISH }}
+    permissions:
+      contents: read
+      id-token: write # pub.dev OIDC
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: "v${{ needs.release.outputs.version }}"
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Publish to pub.dev
+        if: ${{ env.PUB_PUBLISH == 'true' }}
+        run: |
+          set -eu
+          dart pub get
+          # Core first; the add-on depends on it.
+          dart pub publish --force -C packages/activeledger
+          dart pub publish --force -C packages/activeledger_falcon
+
+      - name: Say so when skipped
+        if: ${{ env.PUB_PUBLISH != 'true' }}
+        run: echo "::warning::PUB_PUBLISH is not 'true' - GitHub release made, pub.dev publish skipped. Configure automated publishing on pub.dev and set the PUB_PUBLISH repo variable to enable."
