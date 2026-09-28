@@ -4,7 +4,7 @@
 </picture>
 
 [![pub](https://img.shields.io/pub/v/activeledger)](https://pub.dev/packages/activeledger)
-[![licence](https://img.shields.io/badge/licence-MIT-blue)](https://github.com/activeledger/SDK-Dart/blob/master/LICENSE)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](https://github.com/activeledger/SDK-Dart/blob/main/LICENSE)
 
 # Activeledger SDK for Dart
 
