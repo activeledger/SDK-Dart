@@ -9,7 +9,7 @@ Dart and Flutter SDK for [Activeledger](https://github.com/activeledger/activele
 
 | Package | What it is |
 |---|---|
-| [`activeledger`](packages/activeledger) | The SDK: keys, onboarding, transactions, events, payload signing. secp256k1 and ML-DSA-65 in pure Dart. |
+| [`activeledger`](packages/activeledger) | The SDK: keys, onboarding, transactions, payload signing. secp256k1 and ML-DSA-65 in pure Dart. |
 | [`activeledger_falcon`](packages/activeledger_falcon) | Adds Falcon-512, backed by liboqs with bundled native libraries. |
 
 ```dart
