@@ -1,0 +1,12 @@
+name: activeledger_sdk_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.10.0
+
+workspace:
+  - packages/activeledger
+  - packages/activeledger_falcon
+
+dev_dependencies:
+  lints: ^6.0.0
