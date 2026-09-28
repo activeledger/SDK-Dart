@@ -1,5 +1,8 @@
 # Falcon-512 for the Activeledger Dart SDK
 
+[![pub](https://img.shields.io/pub/v/activeledger_falcon)](https://pub.dev/packages/activeledger_falcon)
+[![licence](https://img.shields.io/badge/licence-MIT-blue)](https://github.com/activeledger/SDK-Dart/blob/main/LICENSE)
+
 Adds `falcon-512` (FN-DSA) keys to [`activeledger`](https://pub.dev/packages/activeledger).
 
 Falcon-512 signatures are about a fifth the size of ML-DSA-65's, which matters

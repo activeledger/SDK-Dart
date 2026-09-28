@@ -7,10 +7,10 @@
 
 Dart and Flutter SDK for [Activeledger](https://github.com/activeledger/activeledger), with post-quantum identity support.
 
-| Package | What it is |
-|---|---|
-| [`activeledger`](packages/activeledger) | The SDK: keys, onboarding, transactions, payload signing. secp256k1 and ML-DSA-65 in pure Dart. |
-| [`activeledger_falcon`](packages/activeledger_falcon) | Adds Falcon-512, backed by liboqs with bundled native libraries. |
+| Package | pub.dev | What it is |
+|---|---|---|
+| [`activeledger`](https://pub.dev/packages/activeledger) | [![pub](https://img.shields.io/pub/v/activeledger)](https://pub.dev/packages/activeledger) | The SDK: keys, onboarding, transactions, payload signing. secp256k1 and ML-DSA-65 in pure Dart. |
+| [`activeledger_falcon`](https://pub.dev/packages/activeledger_falcon) | [![pub](https://img.shields.io/pub/v/activeledger_falcon)](https://pub.dev/packages/activeledger_falcon) | Adds Falcon-512, backed by liboqs with bundled native libraries. |
 
 ```dart
 import 'package:activeledger_falcon/activeledger_falcon.dart';
@@ -25,7 +25,7 @@ Future<void> main() async {
 }
 ```
 
-See [the `activeledger` package README](packages/activeledger/README.md) for
+See the [`activeledger` package on pub.dev](https://pub.dev/packages/activeledger) for
 the full guide.
 
 ## Compatibility
