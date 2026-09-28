@@ -192,22 +192,30 @@ return values with `returnToRemote`; they arrive in `response.responses`.
 
 ## Events
 
-ActiveCore serves events, by default on port 5261:
+Contract events come straight from each node's own database. The storage
+service serves them at `<storage>/activeledgerevents/events`, by default on
+the node's host one port below the node (5260 -> 5259):
 
 ```dart
-final events = LedgerEvents('http://localhost:5261');
+final events = LedgerEvents('http://localhost:5259');
 
-// As streams - cancelling closes the connection.
-final sub = events.activity().listen(print);
-events.events(contract: 'mycontract', event: 'transfer').listen(print);
+// As a stream - cancelling closes the connection.
+final sub = events.events(contract: contractId, event: 'transfer').listen((e) {
+  print('${e.name} ${e.data} in ${e.umid}');
+});
 
-// Or with callbacks, as in the JavaScript SDK.
-final id = events.subscribeToActivity((stream) => print(stream));
+// Or with a callback, as in the JavaScript SDK.
+final id = events.subscribeToEvent((data) => print(data));
 events.errors.listen(print);
 events.unsubscribe(id);
 ```
 
-Connections reconnect after a drop, resuming from the last event id.
+`Activeledger` works out the storage address from the node address, so
+`ledger.events` is ready to use (pass `storageUrl:` if yours differs).
+Connections reconnect after a drop.
+
+Networks still running ActiveCore can use `ActiveCoreEvents`, which also has
+ActiveCore's activity feed.
 
 ---
 

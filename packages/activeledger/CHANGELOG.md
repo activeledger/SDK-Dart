@@ -10,5 +10,7 @@
 - Falcon-512 via the `activeledger_falcon` add-on and the `PostQuantum`
   registry; `KeyType.preferredPostQuantum` picks the best available.
 - `canonicalJson` reproduces JavaScript's `JSON.stringify` byte for byte.
+- `LedgerEvents` streams contract events from the node's own database;
+  `ActiveCoreEvents` covers legacy ActiveCore deployments.
 - Tested against the JavaScript SDK's cross-language vectors and a live
   four-node network.
