@@ -67,6 +67,31 @@ void main() {
       expect([summary.total, summary.vote, summary.commit], [4, 3, 2]);
     });
 
+    test('accessors never throw on wrongly typed fields', () {
+      final response = LedgerResponse({
+        r'$umid': 5,
+        r'$responses': 'nope',
+        r'$summary': {'total': 'x', 'vote': [], 'commit': 'y', 'errors': 'e'},
+        r'$streams': {
+          'new': [
+            {'id': 7, 'name': 8},
+            {'id': 'a', 'name': 9},
+          ],
+          'updated': 'x',
+        },
+      });
+      expect(response.umid, isNull);
+      expect(response.responses, isEmpty);
+      expect(response.summary.total, isNull);
+      expect(response.summary.vote, isNull);
+      expect(response.summary.commit, isNull);
+      expect(response.errors, isEmpty);
+      expect(response.streams.created.map((s) => s.id), ['a']);
+      expect(response.streams.created.single.name, isNull);
+      expect(response.streams.updated, isEmpty);
+      expect(() => response.committed, returnsNormally);
+    });
+
     test('indexing and toString expose the raw response', () {
       final response = LedgerResponse({r'$umid': 'u', 'extra': 1});
       expect(response['extra'], 1);
