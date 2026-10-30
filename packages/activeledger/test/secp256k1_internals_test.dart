@@ -155,6 +155,69 @@ void main() {
     });
   });
 
+  group('off-curve public keys', () {
+    // The field prime p.
+    final p = BigInt.parse(
+      'fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f',
+      radix: 16,
+    );
+    String h(BigInt v) => v.toRadixString(16).padLeft(64, '0');
+    final y = BigInt.parse(gY, radix: 16);
+    final hexKey = Secp256k1.toHex;
+
+    void refused(String hex) {
+      final bytes = hexBytes(hex);
+      expect(() => Secp256k1.checkPublic(bytes), throwsArgumentError);
+      expect(
+        () => KeyCodec.checkPublicKey(KeyType.secp256k1, hexKey(bytes)),
+        throwsArgumentError,
+      );
+      expect(
+        Secp256k1.verify(
+          message,
+          Secp256k1.sign(message, scalar(n - BigInt.one)),
+          bytes,
+        ),
+        isFalse,
+      );
+    }
+
+    test('refuses an uncompressed point off the curve', () {
+      refused('04$gX${h(y + BigInt.one)}');
+    });
+
+    test('refuses coordinates at or above p', () {
+      // x = p + 1 reduces to x = 1, which does have points on the curve.
+      const y1 =
+          '4218f20ae6c646b363db68605822fb14264ca8d2587fdd6fbc750d587e76a7ee';
+      refused('04${h(p + BigInt.one)}$y1');
+      refused('02${h(p + BigInt.one)}');
+      refused('03${h(p + BigInt.one)}');
+      refused('04$gX${h(p)}');
+      refused('04${h(p)}${h(p)}');
+    });
+
+    test('refuses point-at-infinity and all-zero encodings', () {
+      refused('04${'00' * 64}');
+      refused('02${'00' * 32}');
+      refused('00${'00' * 64}');
+      refused('00${'00' * 32}');
+    });
+
+    test('still accepts valid compressed and uncompressed keys', () {
+      for (final compressed in [true, false]) {
+        final key = Secp256k1.fromScalar(
+          scalar(BigInt.from(0x1234567)),
+          compressed: compressed,
+        );
+        Secp256k1.checkPublic(key.publicKey);
+        KeyCodec.checkPublicKey(KeyType.secp256k1, hexKey(key.publicKey));
+        final sig = Secp256k1.sign(message, key.privateKey);
+        expect(Secp256k1.verify(message, sig, key.publicKey), isTrue);
+      }
+    });
+  });
+
   group('hex encoding', () {
     test('toHex writes 0x, lowercase, two digits per byte', () {
       expect(
