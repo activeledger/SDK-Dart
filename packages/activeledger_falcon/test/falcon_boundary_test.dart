@@ -1,22 +1,46 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:activeledger_falcon/activeledger_falcon.dart';
 import 'package:test/test.dart';
 
+/// The add-on boundary with Falcon-512 NOT enabled.
+///
+/// Nothing in this file may call `ActiveledgerFalcon.enable()` or touch
+/// liboqs. Enabling loads a process-wide native library whose RNG hooks
+/// (used by every Falcon key generation) are bound to one isolate, and
+/// `dart test` runs files on separate isolates concurrently - so a second
+/// file driving liboqs races `falcon_test.dart` and aborts the VM with
+/// "Cannot invoke native callback from a different isolate". The enabled
+/// behaviour is covered by `falcon_test.dart`; this file covers what the
+/// SDK promises when the add-on is absent or has been disabled.
 void main() {
-  // Each case restores the add-on, because the boundary is process-global.
-  setUp(() => ActiveledgerFalcon.enable(throwOnFailure: true));
-  tearDownAll(ActiveledgerFalcon.disable);
-
   final keys = KeyHandler();
   final transactions = TransactionHandler();
   final payloads = PayloadHandler();
   const crypto = DefaultCryptoProvider();
 
-  group('enable and disable', () {
-    test('disable clears every observable flag', () {
-      ActiveledgerFalcon.disable();
+  // Never registered, so every case here sees the add-on as absent.
+  setUpAll(ActiveledgerFalcon.disable);
+
+  // A falcon-512 key with the right lengths and headers, built by hand so
+  // no native code is needed. It is only ever used where the SDK must refuse
+  // before reaching a signature scheme.
+  Uint8List bytes(int length, int header) => Uint8List(length)..[0] = header;
+  final falconKey = Key(
+    name: 'k',
+    type: KeyType.falcon512,
+    key: KeyMaterial(
+      publicKey: base64.encode(bytes(897, 0x09)),
+      privateKey: base64.encode(bytes(1281, 0x59)),
+    ),
+    identity: 'stream',
+  );
+
+  group('with the add-on absent', () {
+    test('every observable flag says falcon-512 is off', () {
       expect(ActiveledgerFalcon.isEnabled, isFalse);
+      expect(ActiveledgerFalcon.failure, isNull);
       expect(PostQuantum.isAvailable(KeyType.falcon512), isFalse);
       expect(KeyType.preferredPostQuantum, KeyType.mlDsa65);
     });
@@ -24,6 +48,7 @@ void main() {
     test('disable twice is harmless and keeps ml-dsa-65 working', () {
       ActiveledgerFalcon.disable();
       ActiveledgerFalcon.disable();
+      expect(ActiveledgerFalcon.isEnabled, isFalse);
       expect(PostQuantum.isAvailable(KeyType.mlDsa65), isTrue);
       final key = keys.generateKey('k', type: KeyType.mlDsa65);
       final signature = payloads.sign({'a': 1}, key);
@@ -33,38 +58,43 @@ void main() {
       );
     });
 
-    test('enable after disable restores falcon-512 as preferred', () {
-      ActiveledgerFalcon.disable();
-      expect(ActiveledgerFalcon.enable(), isTrue);
-      expect(ActiveledgerFalcon.isEnabled, isTrue);
-      expect(ActiveledgerFalcon.failure, isNull);
-      expect(KeyType.preferredPostQuantum, KeyType.falcon512);
-      expect(
-        keys.generateKey('k', type: KeyType.falcon512).type,
-        KeyType.falcon512,
-      );
-    });
-
-    test('keys made by preferredPostQuantum follow the boundary', () {
-      expect(
-        keys.generateKey('a', type: KeyType.preferredPostQuantum).type,
-        KeyType.falcon512,
-      );
-      ActiveledgerFalcon.disable();
+    test('preferredPostQuantum keys fall back to ml-dsa-65', () {
       expect(
         keys.generateKey('b', type: KeyType.preferredPostQuantum).type,
         KeyType.mlDsa65,
       );
     });
+
+    test('generating a falcon key says how to fix it', () {
+      expect(
+        () => keys.generateKey('k', type: KeyType.falcon512),
+        throwsA(
+          isA<KeyTypeUnavailableException>().having(
+            (e) => e.message,
+            'message',
+            contains('ActiveledgerFalcon.enable()'),
+          ),
+        ),
+      );
+    });
+
+    test('a key phrase cannot restore a falcon key', () {
+      expect(
+        () => keys.restoreBip39Key(
+          'k',
+          'abandon abandon abandon abandon abandon abandon '
+              'abandon abandon abandon abandon abandon about',
+          type: KeyType.falcon512,
+        ),
+        throwsA(isA<KeyTypeUnavailableException>()),
+      );
+    });
   });
 
-  group('a falcon key outliving the add-on', () {
-    test('cannot sign once disabled, and the error says how to fix it', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512)
-        ..identity = 'stream';
-      ActiveledgerFalcon.disable();
+  group('a falcon key without the add-on', () {
+    test('cannot sign, and the error says how to fix it', () {
       expect(
-        () => payloads.sign({'a': 1}, key),
+        () => payloads.sign({'a': 1}, falconKey),
         throwsA(
           isA<KeyTypeUnavailableException>().having(
             (e) => e.message,
@@ -74,8 +104,16 @@ void main() {
         ),
       );
       expect(
+        () =>
+            crypto.sign('m', falconKey.key.privateKey, type: KeyType.falcon512),
+        throwsA(isA<KeyTypeUnavailableException>()),
+      );
+    });
+
+    test('cannot build a signed transaction', () {
+      expect(
         () => transactions.labelledTransaction(
-          key: key,
+          key: falconKey,
           namespace: 'n',
           contract: 'c',
           inputLabel: 'i',
@@ -85,171 +123,43 @@ void main() {
       );
     });
 
-    test('verifies as false, not true or a throw, once disabled', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512);
-      final signature = payloads.sign('hello', key);
+    test('verifies as false, never true and never a throw', () {
+      final signature = base64.encode(bytes(650, 0x39));
       expect(
-        payloads.verify('hello', signature, key.publicKey, type: key.type),
-        isTrue,
-      );
-      ActiveledgerFalcon.disable();
-      expect(
-        payloads.verify('hello', signature, key.publicKey, type: key.type),
+        payloads.verify(
+          'hello',
+          signature,
+          falconKey.publicKey,
+          type: falconKey.type,
+        ),
         isFalse,
       );
       expect(
-        crypto.verify('hello', signature, key.publicKey, type: key.type),
-        isFalse,
-      );
-    });
-
-    test('the same signature verifies again after re-enabling', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512);
-      final signature = payloads.sign('hello', key);
-      ActiveledgerFalcon.disable();
-      ActiveledgerFalcon.enable();
-      expect(
-        payloads.verify('hello', signature, key.publicKey, type: key.type),
-        isTrue,
-      );
-    });
-
-    test('a key phrase still restores a falcon key after re-enabling', () {
-      final original = keys.generateBip39Key('k', type: KeyType.falcon512);
-      ActiveledgerFalcon.disable();
-      expect(
-        () => keys.restoreBip39Key(
-          'k',
-          original.phrase!,
+        crypto.verify(
+          'hello',
+          signature,
+          falconKey.publicKey,
           type: KeyType.falcon512,
         ),
+        isFalse,
+      );
+    });
+
+    test('a public key cannot be checked without a scheme', () {
+      expect(
+        () => KeyCodec.checkPublicKey(KeyType.falcon512, falconKey.publicKey),
         throwsA(isA<KeyTypeUnavailableException>()),
       );
-      ActiveledgerFalcon.enable();
-      final restored = keys.restoreBip39Key(
-        'k',
-        original.phrase!,
-        type: KeyType.falcon512,
-      );
-      expect(restored.publicKey, original.publicKey);
-      expect(restored.key.privateKey, original.key.privateKey);
-    });
-  });
-
-  group('falcon-512 through the SDK surface', () {
-    test('labelledTransaction signs and verifies', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512)
-        ..identity = 'stream';
-      final tx = transactions.labelledTransaction(
-        key: key,
-        namespace: 'n',
-        contract: 'c',
-        inputLabel: 'i',
-        stream: 'stream',
-        inputData: {'amount': 1},
-      );
-      expect(
-        crypto.verify(
-          tx.signedString,
-          tx.sigs['stream']!,
-          key.publicKey,
-          type: KeyType.falcon512,
-        ),
-        isTrue,
-      );
-      tx.tx[r'$namespace'] = 'other';
-      expect(
-        crypto.verify(
-          tx.signedString,
-          tx.sigs['stream']!,
-          key.publicKey,
-          type: KeyType.falcon512,
-        ),
-        isFalse,
-      );
     });
 
-    test('self-signed input advertises falcon-512', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512)
-        ..identity = 'stream';
-      final tx = transactions.labelledTransaction(
-        key: key,
-        namespace: 'n',
-        contract: 'c',
-        inputLabel: 'i',
-        stream: 'stream',
-        selfsign: true,
-      );
-      final input = (tx.tx[r'$i']! as Map)['i'] as Map;
-      expect(input['type'], 'falcon-512');
-      expect(input['publicKey'], key.publicKey);
-      expect(tx.sigs.keys, ['i']);
-    });
-
-    test('payload signatures are bound to the key and to the payload', () {
-      final a = keys.generateKey('a', type: KeyType.falcon512);
-      final b = keys.generateKey('b', type: KeyType.falcon512);
-      final signature = payloads.sign({'x': 1}, a);
-      bool check(Object? payload, String publicKey) =>
-          payloads.verify(payload, signature, publicKey, type: a.type);
-      expect(check({'x': 1}, a.publicKey), isTrue);
-      expect(check({'x': 2}, a.publicKey), isFalse);
-      expect(check({'x': 1}, b.publicKey), isFalse);
-    });
-
-    test('a corrupted or truncated signature verifies false', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512);
-      final bytes = base64.decode(payloads.sign('m', key));
-      final flipped = List<int>.of(bytes)..[bytes.length ~/ 2] ^= 1;
-      expect(
-        payloads.verify(
-          'm',
-          base64.encode(flipped),
-          key.publicKey,
-          type: key.type,
-        ),
-        isFalse,
-      );
-      expect(
-        payloads.verify(
-          'm',
-          base64.encode(bytes.sublist(0, 10)),
-          key.publicKey,
-          type: key.type,
-        ),
-        isFalse,
-      );
-      expect(payloads.verify('m', '', key.publicKey, type: key.type), isFalse);
-    });
-
-    test('a key file round-trips and still signs', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512)
-        ..identity = 'id';
+    test('a key file still round-trips as data', () {
       final back = Key.fromJson(
-        jsonDecode(jsonEncode(key.toJson())) as Map<String, Object?>,
+        jsonDecode(jsonEncode(falconKey.toJson())) as Map<String, Object?>,
       );
       expect(back.type, KeyType.falcon512);
-      final signature = payloads.sign('m', back);
-      expect(
-        payloads.verify('m', signature, key.publicKey, type: key.type),
-        isTrue,
-      );
-    });
-
-    test('a public key of the wrong length is rejected by KeyCodec', () {
-      final key = keys.generateKey('k', type: KeyType.falcon512);
-      KeyCodec.checkPublicKey(KeyType.falcon512, key.publicKey);
-      final stripped = base64.encode(base64.decode(key.publicKey).sublist(1));
-      expect(
-        () => KeyCodec.checkPublicKey(KeyType.falcon512, stripped),
-        throwsA(
-          isA<ArgumentError>().having(
-            (e) => e.message,
-            'message',
-            contains('header byte stripped'),
-          ),
-        ),
-      );
+      expect(back.publicKey, falconKey.publicKey);
+      expect(back.key.privateKey, falconKey.key.privateKey);
+      expect(back.identity, 'stream');
     });
   });
 }
