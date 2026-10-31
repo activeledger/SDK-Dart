@@ -222,9 +222,10 @@ class KeyHandler {
   /// Onboards [key] - creating its identity on the ledger - and sets
   /// [Key.identity] to the new stream id.
   ///
-  /// Throws an [OnboardException] if the ledger did not create a stream,
-  /// rather than returning a response whose identity is missing: an
-  /// onboarding that silently produced nothing surfaces three calls later.
+  /// Throws an [OnboardException] if the transaction did not commit or the
+  /// ledger did not create a stream, rather than returning a response whose
+  /// identity is missing or untrustworthy: an onboarding that silently
+  /// produced nothing surfaces three calls later.
   Future<LedgerResponse> onboardKey(
     Key key,
     Connection connection, {
@@ -238,11 +239,19 @@ class KeyHandler {
       namespace: namespace,
     );
     final response = await handler.sendTransaction(tx, connection);
+    final errors = response.errors.isEmpty
+        ? ''
+        : ': ${response.errors.join('; ')}';
+    if (!response.committed) {
+      throw OnboardException(
+        'Onboarding "${key.name}" was not committed$errors',
+        response.raw,
+      );
+    }
     final created = response.streams.created;
     if (created.isEmpty) {
       throw OnboardException(
-        'Onboarding "${key.name}" created no identity'
-        '${response.errors.isEmpty ? '' : ': ${response.errors.join('; ')}'}',
+        'Onboarding "${key.name}" created no identity$errors',
         response.raw,
       );
     }

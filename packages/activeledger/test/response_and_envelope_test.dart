@@ -304,6 +304,7 @@ void main() {
           sent = jsonDecode(request.body) as Map<String, Object?>;
           return http.Response(
             jsonEncode({
+              r'$summary': {'total': 1, 'vote': 1, 'commit': 1},
               r'$streams': {
                 'new': [
                   {'id': 's'},
@@ -324,6 +325,42 @@ void main() {
       expect(tx[r'$contract'], 'custom');
       expect(tx[r'$namespace'], 'ns');
     });
+
+    test(
+      'a stream with summary errors is not committed and sets no identity',
+      () async {
+        final connection = Connection.fromUrl(
+          'http://node:5260',
+          client: MockClient(
+            (_) async => http.Response(
+              jsonEncode({
+                r'$summary': {
+                  'errors': ['1220 Signature Incorrect'],
+                },
+                r'$streams': {
+                  'new': [
+                    {'id': 'first'},
+                  ],
+                },
+              }),
+              200,
+            ),
+          ),
+        );
+        final key = keys.generateKey('me');
+        await expectLater(
+          keys.onboardKey(key, connection),
+          throwsA(
+            isA<OnboardException>().having(
+              (e) => e.message,
+              'message',
+              allOf(contains('was not committed'), contains('1220')),
+            ),
+          ),
+        );
+        expect(key.identity, isNull);
+      },
+    );
 
     test('a failed onboard leaves the identity unset', () async {
       final connection = Connection.fromUrl(
