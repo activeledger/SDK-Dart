@@ -215,15 +215,18 @@ class DefaultCryptoProvider implements CryptoProvider {
       : '';
 
   static Uint8List _base64(String value, KeyType type, String what) {
-    if (value.startsWith('0x')) {
-      throw ArgumentError(
-        '${type.wire} $what key looks like hex - '
-        'post-quantum keys are base64 of the raw bytes',
-      );
-    }
+    // A "0x" prefix alone is not proof of hex: "0x" is also two valid
+    // base64 characters, so about 1 in 4096 real keys start with it. Only
+    // call it hex once it has failed to decode as base64.
     try {
       return Uint8List.fromList(base64.decode(value));
     } on FormatException {
+      if (value.startsWith('0x')) {
+        throw ArgumentError(
+          '${type.wire} $what key looks like hex - '
+          'post-quantum keys are base64 of the raw bytes',
+        );
+      }
       throw ArgumentError('${type.wire} $what key is not valid base64');
     }
   }
