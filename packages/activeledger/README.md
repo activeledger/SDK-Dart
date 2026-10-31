@@ -230,6 +230,11 @@ final loaded = await keys.importKey('keys/identity.json');
 
 The format is the JavaScript SDK's, so key files move between the two.
 
+Importing checks the public key belongs to the private key (secp256k1 by
+deriving it, ml-dsa-65 by a sign and verify round trip) and throws a
+`FormatException` if not. Falcon-512 is checked the same way when the add-on
+is enabled; RSA pairs are not checked.
+
 ## Signing elsewhere
 
 Every handler takes a `CryptoProvider`. Implement one to sign in an HSM or
@@ -245,6 +250,10 @@ This SDK always sends it; if you hand-build an envelope, do the same.
 
 **A rejected transaction is HTTP 200.** Check `response.committed`, never the
 status code.
+`committed` is true only for a reply with a `$summary` object whose `errors`
+are absent or empty, so a `{}` or other body without `$summary` is not
+committed. A 2xx body that is not a JSON object throws an
+`ActiveledgerException`.
 
 **Errors are unhelpful by design.** A wrong type string, a wrong-length key or
 signed bytes differing by one escape all come back as **1220 "Signature

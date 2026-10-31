@@ -69,10 +69,19 @@ class Key {
       throw const FormatException('Key file has no type');
     }
     if (key is! Map) throw const FormatException('Key file has no key');
+    final keyType = KeyType.fromWire(type);
+    final material = KeyMaterial.fromJson(key.cast<String, Object?>());
+    try {
+      KeyCodec.checkKeyPair(keyType, material.publicKey, material.privateKey);
+    } on ArgumentError catch (e) {
+      throw FormatException(
+        'Key file "$name" is not a valid key pair: ${e.message}',
+      );
+    }
     return Key(
       name: name,
-      type: KeyType.fromWire(type),
-      key: KeyMaterial.fromJson(key.cast<String, Object?>()),
+      type: keyType,
+      key: material,
       identity: json['identity'] as String?,
       phrase: json['phrase'] as String?,
     );
