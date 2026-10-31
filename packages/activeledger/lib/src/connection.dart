@@ -88,7 +88,10 @@ class LedgerResponse {
   final Map<String, Object?> raw;
 
   /// The transaction's unique id.
-  String? get umid => raw[r'$umid'] as String?;
+  String? get umid {
+    final value = raw[r'$umid'];
+    return value is String ? value : null;
+  }
 
   /// Consensus totals.
   LedgerSummary get summary => LedgerSummary(_map(raw[r'$summary']));
@@ -98,8 +101,10 @@ class LedgerResponse {
 
   /// Values a contract returned with `returnToRemote`. This is how state is
   /// read: name the streams in `$r` and have the contract hand values back.
-  List<Object?> get responses =>
-      (raw[r'$responses'] as List<Object?>?) ?? const [];
+  List<Object?> get responses {
+    final value = raw[r'$responses'];
+    return value is List ? value.cast<Object?>() : const [];
+  }
 
   /// The echoed transaction, when the node runs in debug mode.
   Object? get debug => raw[r'$debug'];
@@ -127,9 +132,11 @@ class LedgerSummary {
 
   final Map<String, Object?> raw;
 
-  int? get total => (raw['total'] as num?)?.toInt();
-  int? get vote => (raw['vote'] as num?)?.toInt();
-  int? get commit => (raw['commit'] as num?)?.toInt();
+  int? get total => _int(raw['total']);
+  int? get vote => _int(raw['vote']);
+  int? get commit => _int(raw['commit']);
+
+  static int? _int(Object? value) => value is num ? value.toInt() : null;
 
   List<String> get errors {
     final value = raw['errors'];
@@ -154,8 +161,11 @@ class LedgerStreams {
   static List<StreamRef> _refs(Object? value) => value is List
       ? [
           for (final item in value)
-            if (item is Map)
-              StreamRef(item['id'] as String, item['name'] as String?),
+            if (item is Map && item['id'] is String)
+              StreamRef(
+                item['id'] as String,
+                item['name'] is String ? item['name'] as String : null,
+              ),
         ]
       : const [];
 }

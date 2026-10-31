@@ -25,6 +25,10 @@ abstract final class Secp256k1 {
 
   static final BigInt _halfOrder = domain.n >> 1;
 
+  /// The field prime p = 2^256 - 2^32 - 977.
+  static final BigInt _fieldPrime =
+      (BigInt.one << 256) - (BigInt.one << 32) - BigInt.from(977);
+
   static final RegExp _hex = RegExp(r'^[0-9a-fA-F]*$');
 
   /// A fresh key pair as (public point, 32-byte private scalar).
@@ -108,8 +112,7 @@ abstract final class Secp256k1 {
     Uint8List publicPoint,
   ) {
     try {
-      final point = domain.curve.decodePoint(publicPoint);
-      if (point == null || point.isInfinity) return false;
+      final point = _decodeValidated(publicPoint);
       final (r, s) = decodeDer(signature);
       if (r <= BigInt.zero || r >= domain.n) return false;
       if (s <= BigInt.zero || s >= domain.n) return false;
@@ -177,10 +180,32 @@ abstract final class Secp256k1 {
       );
     }
     try {
-      domain.curve.decodePoint(bytes);
+      _decodeValidated(bytes);
     } catch (_) {
       throw ArgumentError('secp256k1 public key is not a point on the curve');
     }
+  }
+
+  /// Decodes a SEC1 point and proves it is on the curve.
+  ///
+  /// pointycastle's `decodePoint` takes an uncompressed point on trust and
+  /// reduces out-of-range coordinates mod p, so both are checked here:
+  /// x and y in [0, p-1], and y^2 = x^3 + 7 (mod p). Throws otherwise.
+  static ECPoint _decodeValidated(Uint8List bytes) {
+    final p = _fieldPrime;
+    final x = bytesToBigInt(Uint8List.sublistView(bytes, 1, 33));
+    if (x >= p) throw const FormatException('x is not below p');
+    final point = domain.curve.decodePoint(bytes);
+    if (point == null || point.isInfinity) {
+      throw const FormatException('point at infinity');
+    }
+    final y = bytes.length == publicUncompressedBytes
+        ? bytesToBigInt(Uint8List.sublistView(bytes, 33))
+        : point.y!.toBigInteger()!;
+    if (y >= p || (y * y - (x * x * x + BigInt.from(7))) % p != BigInt.zero) {
+      throw const FormatException('point is not on the curve');
+    }
+    return point;
   }
 
   /// Bytes as the ledger stores secp256k1 keys: `0x` + lowercase hex.
