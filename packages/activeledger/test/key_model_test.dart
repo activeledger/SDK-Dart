@@ -8,12 +8,18 @@ import 'package:test/test.dart';
 void main() {
   final keys = KeyHandler();
 
+  // A real pair: Key.fromJson refuses a public key that is not the private
+  // key's.
+  final pair = keys
+      .generateKeyFromSeed('p', Uint8List.fromList(List.filled(32, 0x11)))
+      .key;
+
   Map<String, Object?> valid() => {
     'name': 'me',
     'type': 'secp256k1',
     'key': {
-      'prv': {'pkcs8pem': '0x${'11' * 32}'},
-      'pub': {'pkcs8pem': '0x02${'22' * 32}'},
+      'prv': {'pkcs8pem': pair.privateKey},
+      'pub': {'pkcs8pem': pair.publicKey},
     },
   };
 
@@ -28,7 +34,7 @@ void main() {
       expect(key.type, KeyType.secp256k1);
       expect(key.identity, 'stream');
       expect(key.phrase, 'some words');
-      expect(key.publicKey, '0x02${'22' * 32}');
+      expect(key.publicKey, pair.publicKey);
       expect(key.key.privateKey, '0x${'11' * 32}');
     });
 
@@ -80,10 +86,55 @@ void main() {
       });
     }
 
+    test('a public key that is not the private key\'s is refused', () {
+      final other = keys.generateKey('other').key;
+      final json = valid();
+      json['key'] = {
+        'prv': {'pkcs8pem': pair.privateKey},
+        'pub': {'pkcs8pem': other.publicKey},
+      };
+      expect(
+        () => Key.fromJson(json),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('does not belong'),
+          ),
+        ),
+      );
+    });
+
+    test('a compressed public key matches its private key too', () {
+      final compressed = keys.generateKey('c', compressed: true);
+      expect(Key.fromJson(compressed.toJson()).publicKey, compressed.publicKey);
+    });
+
+    test('an ml-dsa-65 public key from another pair is refused', () {
+      final a = keys.generateKey('a', type: KeyType.mlDsa65);
+      final b = keys.generateKey('b', type: KeyType.mlDsa65);
+      final json = a.toJson();
+      json['key'] = {
+        'prv': {'pkcs8pem': a.key.privateKey},
+        'pub': {'pkcs8pem': b.key.publicKey},
+      };
+      expect(
+        () => Key.fromJson(json),
+        throwsA(
+          isA<FormatException>().having(
+            (e) => e.message,
+            'message',
+            contains('ml-dsa-65 public key does not belong'),
+          ),
+        ),
+      );
+      expect(Key.fromJson(a.toJson()).publicKey, a.key.publicKey);
+    });
+
     test('a non-string pkcs8pem is refused', () {
       final json = valid();
       json['key'] = {
-        'prv': {'pkcs8pem': '0x${'11' * 32}'},
+        'prv': {'pkcs8pem': pair.privateKey},
         'pub': {'pkcs8pem': 5},
       };
       expect(() => Key.fromJson(json), throwsFormatException);

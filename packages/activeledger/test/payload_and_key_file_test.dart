@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:activeledger/activeledger.dart';
 import 'package:test/test.dart';
@@ -88,11 +89,14 @@ void main() {
 
     test('imports the JavaScript SDK key file shape', () async {
       final file = File('${dir.path}/js.json');
+      final pair = keys
+          .generateKeyFromSeed('js', Uint8List.fromList(List.filled(32, 0x11)))
+          .key;
       await file.writeAsString(
         jsonEncode({
           'key': {
-            'prv': {'pkcs8pem': '0x${'11' * 32}'},
-            'pub': {'pkcs8pem': '0x02${'22' * 32}'},
+            'prv': {'pkcs8pem': pair.privateKey},
+            'pub': {'pkcs8pem': pair.publicKey},
           },
           'name': 'js',
           'type': 'secp256k1',

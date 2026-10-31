@@ -251,4 +251,62 @@ abstract final class KeyCodec {
       PemPublicKey.parse(publicKey);
     }
   }
+
+  /// Checks [publicKey] and [privateKey] belong together, throwing an
+  /// [ArgumentError] otherwise.
+  ///
+  /// secp256k1 derives the public key from the private scalar and compares
+  /// it; a post-quantum scheme signs a probe message and verifies it. A
+  /// pair that does not match signs fine and is then rejected by the ledger
+  /// as 1220 "Signature Incorrect", so it is refused here. RSA pairs are
+  /// not checked, and neither is a post-quantum type whose scheme is not
+  /// registered.
+  static void checkKeyPair(KeyType type, String publicKey, String privateKey) {
+    const mismatch = 'public key does not belong to the private key';
+    if (type.isPostQuantum) {
+      if (!PostQuantum.isAvailable(type)) return;
+      checkPublicKey(type, publicKey);
+      final scheme = PostQuantum.schemeFor(type);
+      final prv = DefaultCryptoProvider._base64(privateKey, type, 'private');
+      if (prv.length != scheme.privateKeyBytes) {
+        throw ArgumentError(
+          '${type.wire} private key should be '
+          '${scheme.privateKeyBytes} bytes, got ${prv.length}',
+        );
+      }
+      final probe = Uint8List.fromList(utf8.encode('activeledger key pair'));
+      final pub = DefaultCryptoProvider._base64(publicKey, type, 'public');
+      if (!scheme.verify(probe, scheme.sign(probe, prv), pub)) {
+        throw ArgumentError('${type.wire} $mismatch');
+      }
+      return;
+    }
+    if (type == KeyType.rsa) return;
+    Uint8List scalar;
+    Uint8List point;
+    if (PemBlock.looksLikePem(privateKey)) {
+      final parsed = PemPrivateKey.parse(privateKey);
+      if (parsed is! PemEcPrivateKey) return;
+      scalar = parsed.scalar;
+    } else {
+      scalar = Secp256k1.fromHex(privateKey, 'private');
+    }
+    if (PemBlock.looksLikePem(publicKey)) {
+      final parsed = PemPublicKey.parse(publicKey);
+      if (parsed is! PemEcPublicKey) return;
+      point = parsed.point;
+    } else {
+      point = Secp256k1.fromHex(publicKey, 'public');
+    }
+    Secp256k1.checkPublic(point);
+    final derived = Secp256k1.fromScalar(
+      scalar,
+      compressed: point.length == Secp256k1.publicCompressedBytes,
+    ).publicKey;
+    var same = derived.length == point.length;
+    for (var i = 0; same && i < derived.length; i++) {
+      same = derived[i] == point[i];
+    }
+    if (!same) throw ArgumentError('secp256k1 $mismatch');
+  }
 }

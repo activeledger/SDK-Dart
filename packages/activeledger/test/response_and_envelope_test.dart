@@ -21,10 +21,35 @@ void main() {
       expect(response.committed, isFalse);
     });
 
-    test('is false when no node committed', () {
+    test('does not look at the commit count', () {
       expect(
         LedgerResponse({
           r'$summary': {'total': 4, 'vote': 4, 'commit': 0},
+        }).committed,
+        isTrue,
+      );
+    });
+
+    test('an empty errors list is still committed', () {
+      expect(
+        LedgerResponse({
+          r'$summary': {'commit': 1, 'errors': <String>[]},
+        }).committed,
+        isTrue,
+      );
+    });
+
+    test('is false without a summary object', () {
+      expect(LedgerResponse({}).committed, isFalse);
+      expect(LedgerResponse({r'$umid': 'u'}).committed, isFalse);
+      expect(LedgerResponse({r'$summary': 'ok'}).committed, isFalse);
+      expect(LedgerResponse({r'$summary': null}).committed, isFalse);
+    });
+
+    test('is false when errors is not a list', () {
+      expect(
+        LedgerResponse({
+          r'$summary': {'commit': 1, 'errors': 'boom'},
         }).committed,
         isFalse,
       );
@@ -41,7 +66,7 @@ void main() {
 
     test('tolerates a response with no summary at all', () {
       final response = LedgerResponse({});
-      expect(response.committed, isTrue);
+      expect(response.committed, isFalse);
       expect(response.errors, isEmpty);
       expect(response.umid, isNull);
       expect(response.responses, isEmpty);
@@ -85,7 +110,7 @@ void main() {
       expect(response.summary.total, isNull);
       expect(response.summary.vote, isNull);
       expect(response.summary.commit, isNull);
-      expect(response.errors, isEmpty);
+      expect(response.errors, ['e']);
       expect(response.streams.created.map((s) => s.id), ['a']);
       expect(response.streams.created.single.name, isNull);
       expect(response.streams.updated, isEmpty);
@@ -179,15 +204,26 @@ void main() {
       );
     });
 
-    test('a 2xx that is not JSON is a FormatException', () async {
+    test('a 2xx that is not JSON is an ActiveledgerException', () async {
       final connection = Connection.fromUrl(
         'http://node:5260',
         client: MockClient((_) async => http.Response('<html>', 200)),
       );
       await expectLater(
         connection.sendTransaction({r'$tx': {}}),
-        throwsFormatException,
+        throwsA(isA<ActiveledgerException>()),
       );
+    });
+
+    test('a 200 with a body that has no summary is not committed', () async {
+      for (final body in ['{}', r'{"$umid":"u"}']) {
+        final connection = Connection.fromUrl(
+          'http://node:5260',
+          client: MockClient((_) async => http.Response(body, 200)),
+        );
+        final response = await connection.sendTransaction({r'$tx': {}});
+        expect(response.committed, isFalse, reason: body);
+      }
     });
 
     test('a non-2xx carries the status and the body', () async {
