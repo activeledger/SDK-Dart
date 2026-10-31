@@ -26,6 +26,9 @@ jobs:
         working-directory: packages/activeledger
       - run: dart test
         working-directory: packages/activeledger_falcon
+      - name: Smoke test a consumer package
+        run: dart scripts/smoke.dart
+        if: matrix.os == 'ubuntu-latest'
 
   live-network:
     # The only check that a real ledger accepts what this SDK signs.
