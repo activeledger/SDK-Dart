@@ -321,7 +321,9 @@ void main() {
   });
 
   group('KeyCodec.checkPublicKey', () {
-    final mlPublic = base64.encode(MlDsa65Scheme().generate().publicKey);
+    // Fixed bytes, not a generated key: a random key's base64 starts with
+    // "0x" about 1 time in 4096, which once failed CI.
+    final mlPublic = base64.encode(Uint8List(1952)..fillRange(0, 1952, 7));
 
     Matcher argError(String text) => throwsA(
       isA<ArgumentError>().having((e) => e.message, 'message', contains(text)),
@@ -329,6 +331,15 @@ void main() {
 
     test('accepts a well-formed ml-dsa-65 key', () {
       KeyCodec.checkPublicKey(KeyType.mlDsa65, mlPublic);
+    });
+
+    test('accepts a base64 ml-dsa-65 key that begins with 0x', () {
+      final bytes = Uint8List(1952)
+        ..[0] = 0xD3
+        ..[1] = 0x10;
+      final key = base64.encode(bytes);
+      expect(key, startsWith('0x'));
+      KeyCodec.checkPublicKey(KeyType.mlDsa65, key);
     });
 
     test('names a wrong ml-dsa-65 length', () {
