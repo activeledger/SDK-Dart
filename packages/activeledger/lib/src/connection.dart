@@ -51,7 +51,8 @@ class Connection {
   ///
   /// **A rejected transaction is HTTP 200.** Check
   /// [LedgerResponse.committed], never only that this did not throw. This
-  /// throws a [LedgerHttpException] only for a non-2xx status.
+  /// throws a [LedgerHttpException] for a non-2xx status, and an
+  /// [ActiveledgerException] for a 2xx body that is not a JSON object.
   Future<LedgerResponse> sendTransaction(Object transaction) async {
     final body = transaction is Transaction
         ? canonicalJson(transaction.toJson())
@@ -67,7 +68,12 @@ class Connection {
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw LedgerHttpException(response.statusCode, text);
     }
-    final decoded = jsonDecode(text);
+    final Object? decoded;
+    try {
+      decoded = jsonDecode(text);
+    } on FormatException {
+      throw ActiveledgerException('Unexpected ledger response: $text');
+    }
     if (decoded is! Map) {
       throw ActiveledgerException('Unexpected ledger response: $text');
     }
@@ -110,12 +116,19 @@ class LedgerResponse {
   Object? get debug => raw[r'$debug'];
 
   /// Errors the network reported. Non-empty means the transaction did NOT
-  /// commit, even though the HTTP status was 200.
+  /// commit, even though the HTTP status was 200. Empty does not mean it
+  /// did: see [committed].
   List<String> get errors => summary.errors;
 
-  /// Whether the transaction committed.
-  bool get committed =>
-      errors.isEmpty && (summary.commit == null || summary.commit! > 0);
+  /// Whether the transaction committed: the reply has a `$summary` object
+  /// and its `errors` are absent or empty. A reply with no `$summary` (a
+  /// `{}`, say) is not a ledger answer, so it is not committed.
+  bool get committed {
+    final summary = raw[r'$summary'];
+    if (summary is! Map) return false;
+    final errors = summary['errors'];
+    return errors == null || (errors is List && errors.isEmpty);
+  }
 
   Object? operator [](String key) => raw[key];
 
@@ -140,7 +153,8 @@ class LedgerSummary {
 
   List<String> get errors {
     final value = raw['errors'];
-    if (value is! List) return const [];
+    if (value == null) return const [];
+    if (value is! List) return [value is String ? value : jsonEncode(value)];
     return [for (final e in value) e is String ? e : jsonEncode(e)];
   }
 }

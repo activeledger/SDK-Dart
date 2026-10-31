@@ -263,7 +263,7 @@ void main() {
       addTearDown(connection.close);
       await expectLater(
         connection.sendTransaction({'x': 1}),
-        throwsFormatException,
+        throwsA(isA<ActiveledgerException>()),
       );
     });
   });
@@ -313,7 +313,7 @@ void main() {
       );
     });
 
-    test('a 200 with a non-JSON body is a FormatException', () async {
+    test('a 200 with a non-JSON body is an ActiveledgerException', () async {
       handler = (request) async {
         request.response.write('<html>proxy error</html>');
       };
@@ -321,7 +321,7 @@ void main() {
       addTearDown(connection.close);
       await expectLater(
         connection.sendTransaction({'x': 1}),
-        throwsFormatException,
+        throwsA(isA<ActiveledgerException>()),
       );
     });
 
