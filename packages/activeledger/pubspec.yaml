@@ -5,6 +5,7 @@ description: >-
   keys.
 version: 1.0.0
 homepage: https://github.com/activeledger/SDK-Dart
+documentation: https://activeledger.github.io/activeledger/sdks/dart/
 repository: https://github.com/activeledger/SDK-Dart/tree/main/packages/activeledger
 issue_tracker: https://github.com/activeledger/SDK-Dart/issues
 topics:
