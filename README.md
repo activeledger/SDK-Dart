@@ -5,6 +5,8 @@
 
 # Activeledger SDK for Dart
 
+**Documentation:** [SDK guide](https://activeledger.github.io/activeledger/sdks/dart/) | [All SDKs](https://activeledger.github.io/activeledger/sdks/) | [Activeledger guide](https://activeledger.github.io/activeledger/)
+
 Dart and Flutter SDK for [Activeledger](https://github.com/activeledger/activeledger), with post-quantum identity support.
 
 | Package | pub.dev | What it is |
