@@ -1,0 +1,69 @@
+# Publishes both packages to pub.dev.
+#
+# pub.dev's automated publishing only accepts a run whose ref is a tag matching
+# its tag pattern (v{{version}}) and whose event is enabled on the package's
+# admin page (workflow_dispatch). release.yml dispatches this workflow with
+# `--ref v<version>` after it creates the tag; it can also be run by hand with
+# `gh workflow run publish.yml --ref v<version>`.
+#
+# Needs the repository variable PUB_PUBLISH=true and automated publishing set up
+# for BOTH packages at pub.dev/packages/<name>/admin. No token is stored: pub.dev
+# trusts this repository through OIDC.
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Validate only; do not upload"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write # pub.dev OIDC
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      PUB_PUBLISH: ${{ vars.PUB_PUBLISH }}
+    steps:
+      - name: Refuse to run from a branch
+        if: ${{ github.ref_type != 'tag' }}
+        run: |
+          echo "::error::Run this against a tag (--ref v<version>); pub.dev rejects branch runs."
+          exit 1
+
+      - uses: actions/checkout@v4
+      - uses: dart-lang/setup-dart@v1
+
+      - name: Tag matches both package versions
+        run: |
+          set -eu
+          v="${GITHUB_REF_NAME#v}"
+          for pkg in activeledger activeledger_falcon; do
+            grep -q "^version: $v$" "packages/$pkg/pubspec.yaml" || { echo "::error::packages/$pkg/pubspec.yaml is not $v"; exit 1; }
+          done
+
+      - name: Dry run
+        if: ${{ inputs.dry_run }}
+        run: |
+          set -eu
+          dart pub get
+          for pkg in activeledger activeledger_falcon; do
+            dart pub publish --dry-run -C "packages/$pkg"
+          done
+
+      - name: Publish to pub.dev
+        if: ${{ !inputs.dry_run && env.PUB_PUBLISH == 'true' }}
+        run: |
+          set -eu
+          dart pub get
+          # Core first; the add-on depends on it.
+          dart pub publish --force -C packages/activeledger
+          dart pub publish --force -C packages/activeledger_falcon
+
+      - name: Say so when skipped
+        if: ${{ !inputs.dry_run && env.PUB_PUBLISH != 'true' }}
+        run: echo "::warning::PUB_PUBLISH is not 'true' - publish skipped. Configure automated publishing on pub.dev and set the PUB_PUBLISH repo variable to enable."
