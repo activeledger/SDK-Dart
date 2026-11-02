@@ -2,7 +2,7 @@ name: activeledger_falcon
 description: >-
   Falcon-512 (FN-DSA) post-quantum keys for the Activeledger Dart SDK, backed
   by liboqs with prebuilt native libraries.
-version: 1.0.0
+version: 1.1.0
 homepage: https://github.com/activeledger/SDK-Dart
 repository: https://github.com/activeledger/SDK-Dart/tree/main/packages/activeledger_falcon
 issue_tracker: https://github.com/activeledger/SDK-Dart/issues

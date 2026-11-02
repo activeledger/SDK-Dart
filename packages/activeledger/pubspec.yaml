@@ -3,7 +3,7 @@ description: >-
   Activeledger SDK for Dart and Flutter. Onboard identities, sign payloads,
   and sign and submit transactions with secp256k1 and post-quantum ML-DSA-65
   keys.
-version: 1.0.0
+version: 1.1.0
 homepage: https://github.com/activeledger/SDK-Dart
 documentation: https://activeledger.github.io/activeledger/sdks/dart/
 repository: https://github.com/activeledger/SDK-Dart/tree/main/packages/activeledger
