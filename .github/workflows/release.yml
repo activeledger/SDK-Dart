@@ -1,15 +1,18 @@
 # Cuts a release: test -> bump -> commit -> tag -> push -> GitHub release ->
-# (optional) pub.dev publish.
+# hand over to publish.yml.
 #
 # Dispatched by hand with a version rather than triggered by a tag. GitHub does
 # not start new workflow runs from events created with the default
 # GITHUB_TOKEN, so `on: push: tags` never fires for a tag a workflow pushed.
 #
-# The GitHub release is the guaranteed outcome. Publishing to pub.dev is a
-# separate, best-effort job: it runs only when the repository variable
-# PUB_PUBLISH is "true" (set once automated publishing is configured for these
-# packages on pub.dev), and is skipped with a warning otherwise, so a release
-# still stands on a repository that is not yet wired up to pub.dev.
+# pub.dev only accepts a publish from a run whose ref is a tag, so publishing
+# cannot happen in this run (it is on a branch). workflow_dispatch is the one
+# event GITHUB_TOKEN is allowed to start, so the last step dispatches
+# publish.yml against the new tag. That is why this job needs actions: write.
+#
+# The GitHub release is the guaranteed outcome; publishing is best-effort and
+# is skipped, with a warning, unless the repository variable PUB_PUBLISH is
+# "true".
 name: Release
 
 on:
@@ -21,12 +24,11 @@ on:
 
 permissions:
   contents: write
+  actions: write # to dispatch publish.yml on the new tag
 
 jobs:
   release:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
       - uses: dart-lang/setup-dart@v1
@@ -64,32 +66,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "v${{ inputs.version }}" --title "v${{ inputs.version }}" --generate-notes
 
-  publish:
-    needs: release
-    runs-on: ubuntu-latest
-    env:
-      # A repo variable, not a secret: pub.dev publishing uses OIDC, not a
-      # token. Set PUB_PUBLISH=true once automated publishing is configured
-      # for both packages at pub.dev/packages/<name>/admin.
-      PUB_PUBLISH: ${{ vars.PUB_PUBLISH }}
-    permissions:
-      contents: read
-      id-token: write # pub.dev OIDC
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: "v${{ needs.release.outputs.version }}"
-      - uses: dart-lang/setup-dart@v1
-
-      - name: Publish to pub.dev
-        if: ${{ env.PUB_PUBLISH == 'true' }}
+      - name: Publish from the tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          dart pub get
-          # Core first; the add-on depends on it.
-          dart pub publish --force -C packages/activeledger
-          dart pub publish --force -C packages/activeledger_falcon
-
-      - name: Say so when skipped
-        if: ${{ env.PUB_PUBLISH != 'true' }}
-        run: echo "::warning::PUB_PUBLISH is not 'true' - GitHub release made, pub.dev publish skipped. Configure automated publishing on pub.dev and set the PUB_PUBLISH repo variable to enable."
+          gh workflow run publish.yml --ref "v${{ inputs.version }}"
